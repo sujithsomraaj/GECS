@@ -2,186 +2,136 @@
 
 pragma solidity >=0.4.25 <0.7.2;
 
-/* SafeMath functions */
+import "https://github.com/sujithsomraaj/GECS/contracts/contract.sol";
 
-contract SafeMath {
+contract voting is SafeMath {
     
-  function safeMul(uint256 a, uint256 b) pure internal returns (uint256) {
-    uint256 c = a * b;
-    assert(a == 0 || c / a == b);
-    return c;
-  }
-
-  function safeDiv(uint256 a, uint256 b) pure internal returns (uint256) {
-    assert(b > 0);
-    uint256 c = a / b;
-    assert(a == b * c + a % b);
-    return c;
-  }
-
-  function safeSub(uint256 a, uint256 b) pure internal returns (uint256) {
-    assert(b <= a);
-    return a - b;
-  }
-
-  function safeAdd(uint256 a, uint256 b) pure internal returns (uint256) {
-    uint256 c = a + b;
-    assert(c>=a && c>=b);
-    return c;
-  } 
-
-}
-
-interface IGECS {
+    IGECS public gecs;
     
-    function totalSupply() external view returns (uint256);
-
-    /**
-     * @dev Returns the amount of tokens owned by `account`.
-     */
-    function balanceOf(address account) external view returns (uint256);
-
-    /**
-     * @dev Moves `amount` tokens from the caller's account to `recipient`.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a {Transfer} event.
-     */
-    function transfer(address recipient, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Returns the remaining number of tokens that `spender` will be
-     * allowed to spend on behalf of `owner` through {transferFrom}. This is
-     * zero by default.
-     *
-     * This value changes when {approve} or {transferFrom} are called.
-     */
-    function allowance(address owner, address spender) external view returns (uint256);
-
-    /**
-     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * IMPORTANT: Beware that changing an allowance with this method brings the risk
-     * that someone may use both the old and the new allowance by unfortunate
-     * transaction ordering. One possible solution to mitigate this race
-     * condition is to first reduce the spender's allowance to 0 and set the
-     * desired value afterwards:
-     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
-     *
-     * Emits an {Approval} event.
-     */
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Moves `amount` tokens from `sender` to `recipient` using the
-     * allowance mechanism. `amount` is then deducted from the caller's
-     * allowance.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a {Transfer} event.
-     */
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    /* Priorities of users in the GECS Network */
     
-    function forceTransfer(address sender, address recipient, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Emitted when `value` tokens are moved from one account (`from`) to
-     * another (`to`).
-     *
-     * Note that `value` may be zero.
-     */
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    /**
-     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
-     * a call to {approve}. `value` is the new allowance.
-     */
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
-
-contract GECS is SafeMath,IGECS {
+    uint256[9] priorities = [0,0,0,0,0,0,0,0,0];
     
-    string public constant name = "Governance Enhanced Commercial System";
-    string public constant symbol = "GECS";
-    uint256 public constant decimals = 0;
-    uint256 public override totalSupply = 0;
-    address payable public owner;
-    address public votingContract;
+    /* 
+    priorities[0] = prosperity;
+    priorities[1] = sustainability;
+    priorities[2] = decentralization;
+    priorities[3] = adoption;
+    priorities[4] = liberty;
+    priorities[5] = innovation;
+    priorities[6] = inclusivity;
+    priorities[7] = community;
+    priorities[8] = evolution;
     
-    constructor() public{
-        uint256 initalSupply =1000000;
-        owner = msg.sender;
-        balanceOf[msg.sender]=initalSupply;
-        totalSupply+=initalSupply;
-        emit Transfer(address(0), owner, initalSupply);
-     }
-
-
-    mapping (address => uint256) public override balanceOf;
-    mapping(address => mapping(address => uint)) allowed;
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint value);
-
+    */
     
-    function transfer(address _reciever, uint256 _value) public override returns (bool){
-         require(balanceOf[msg.sender]>_value);
-         balanceOf[msg.sender] = SafeMath.safeSub(balanceOf[msg.sender],_value);
-         balanceOf[_reciever] = SafeMath.safeAdd(balanceOf[_reciever],_value);
-         emit Transfer(msg.sender,_reciever,_value);
-         return true;
+    uint256 public proposals;
+    
+    /* Setting GECS Contract address to voting contract */
+    constructor(address _contract) public{
+        gecs = GECS(_contract);
+    }
+
+    struct Proposal{
+        address proposedBy;
+        bytes32 title;
+        bytes32 context;
+        bytes32 action;
+        bool state;
+        address[] approvers;
+        address[] opposers;
     }
     
-     function transferFrom( address _from, address _to, uint256 _amount )public override returns (bool) {
-     require( _to != address(0));
-     require(balanceOf[_from] >= _amount && allowed[_from][msg.sender] >= _amount && _amount >= 0);
-     balanceOf[_from] = SafeMath.safeSub(balanceOf[_from],_amount);
-     allowed[_from][msg.sender] = SafeMath.safeSub(allowed[_from][msg.sender],_amount);
-     balanceOf[_to] = SafeMath.safeAdd(balanceOf[_to],_amount);
-     emit Transfer(_from, _to, _amount);
-     return true;
-     }
-     
-     function forceTransfer(address _from,address _votingContract, uint256 _amount) public override returns(bool){
-         require(msg.sender == votingContract);
-         require(_votingContract != address(0));
-         require(balanceOf[_from]>_amount && _amount !=0);
-         balanceOf[_from] = SafeMath.safeSub(balanceOf[_from],_amount);
-         balanceOf[_votingContract] = SafeMath.safeAdd(balanceOf[_votingContract],_amount);
-         emit Transfer(_from,_votingContract,_amount);
-         return true;
-     }
+    struct User{
+        uint8[9] priorities;
+        uint256 balances;
+    }
     
-    function approve(address _spender, uint256 _amount)public override returns (bool) {
-         require( _spender != address(0));
-         allowed[msg.sender][_spender] = _amount;
-         emit  Approval(msg.sender, _spender, _amount);
-         return true;
-     }
-     
-     function reverseApprove(address _spender, uint256 _amount) public returns (bool){
-        require( _spender != address(0));
-        if(SafeMath.safeSub(allowed[msg.sender][_spender],_amount) >= 0){
-        allowed[msg.sender][_spender] = SafeMath.safeSub(allowed[msg.sender][_spender],_amount);
-        emit  Approval(msg.sender, _spender, SafeMath.safeSub(allowed[msg.sender][_spender],_amount));
-        return true;
+    mapping(uint256 => Proposal) proposal;
+    mapping(address => User) users;
+    
+    //creating a proposal on the smart contract
+    function createProposal(bytes32 _title,bytes32 _context, bytes32 _action) public returns (bool response) {
+        require(gecs.balanceOf(msg.sender)>10);
+        Proposal storage _proposal = proposal[proposals];
+        _proposal.title = _title;
+        _proposal.context = _context;
+        _proposal.action = _action;
+        _proposal.proposedBy = msg.sender;
+        _proposal.state=true;
+        proposals = SafeMath.safeAdd(proposals,1);
+        gecs.forceTransfer(msg.sender,address(this),10);
+        return (true);
+    }
+    
+ 
+    //fetching the proposal from the smart contract
+    function getProposal(uint256 _id) public view returns(bytes32 _title, bytes32 _context, bytes32 _action){
+        require(_id < proposals);
+        Proposal storage _proposal = proposal[_id];
+        return(_proposal.title,_proposal.context,_proposal.action);
+    }   
+    
+    //voting for a proposal
+    function vote(uint256 _proposalId,bool _support) public{
+        require(_proposalId < proposals);
+        Proposal storage _proposal = proposal[_proposalId];
+        require(_proposal.state==true);
+        if(_support==true){_proposal.approvers.push(msg.sender);}
+        else{_proposal.opposers.push(msg.sender);}
+    }
+    
+    //completing the proposal
+    function endProposal(uint256 _proposalId) public {
+        Proposal storage _proposal = proposal[_proposalId];
+        require(_proposal.state==true);
+        _proposal.state=false;
+        if(_proposal.approvers.length > _proposal.opposers.length){
+            User storage owner = users[_proposal.proposedBy];
+            owner.balances = SafeMath.safeAdd(owner.balances,20);
         }
-        return false;
-     }
-     
-     
-     function allowance(address _owner, address _spender)public view override returns (uint256 remaining) {
-         require( _owner != address(0) && _spender != address(0));
-         return allowed[_owner][_spender];
-     }
-     
-     function setContract(address _contract) public{
-         require(msg.sender==owner);
-         votingContract = _contract;
-     }
+    }
     
+    //withdrawing funds
+    function withdraw(address _to, uint256 _amount) public{
+        User storage user = users[msg.sender];
+        require(user.balances >= _amount);
+        require(_to != address(0));
+        user.balances = SafeMath.safeSub(user.balances,_amount);
+        gecs.forceTransfer(address(this),_to,_amount);
+    }
+    
+    //registers an user to the smart contract
+    function register(uint8[9] memory _priorities) public{
+        require(_priorities.length == 9);
+        User storage u = users[msg.sender];
+        require(u.priorities[0] == 0);
+        u.priorities = _priorities;
+        for(uint8 i=0;i<9;i++){
+           priorities[_priorities[i]-1] = priorities[_priorities[i]-1] + _priorities.length - i;
+        }
+    }
+    
+    //fetch account details on the network
+    function fetchUser(address _user) public view returns(uint8[9] memory _priorities, uint256 _balance){
+        User memory u = users[_user];
+        return(u.priorities,u.balances);
+    }
+    
+    //overall priorities of all users in the network
+    function fetchNetworkPriorities() public view returns(uint256[9] memory _priorities){
+        return(priorities);
+    }
+    
+    //converting string to bytes32 for submitting proposal
+    function stringToBytes32(string memory source) public pure returns (bytes32 result) {
+    bytes memory tempEmptyStringTest = bytes(source);
+    if (tempEmptyStringTest.length == 0) {
+        return 0x0;
+    }
+    assembly {
+        result := mload(add(source, 32))
+    }
+    }
+
 }
