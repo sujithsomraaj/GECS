@@ -155,7 +155,7 @@ contract GECS is SafeMath,IGECS {
          return true;
      }
     
-    function approve(address _spender, uint256 _amount)public override returns (bool) {
+    function approve(address _spender, uint256 _amount) public override returns (bool) {
          require( _spender != address(0));
          allowed[msg.sender][_spender] = _amount;
          emit  Approval(msg.sender, _spender, _amount);

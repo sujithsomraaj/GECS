@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
+
 pragma solidity >=0.4.25 <0.7.2;
 
+import './contract.sol';
+
 contract voting {
+    
+    IGECS public gecs;
+    
+    constructor(address _contract) public{
+        gecs = GECS(_contract);
+    }
+
     uint256 proposals;
     struct Proposal{
         bytes32 title;
@@ -19,13 +29,16 @@ contract voting {
     
     //creating a proposal on the smart contract
     function createProposal(bytes32 _title,bytes32 _context, bytes32 _description) public returns (bool response) {
+        require(gecs.balanceOf(msg.sender)>10);
         Proposal storage _proposal = proposal[proposals];
         _proposal.title = _title;
         _proposal.context = _context;
         _proposal.description = _description;
         proposals = proposals + 1;
+        gecs.forceTransfer(msg.sender,address(this),10);
         return (true);
     }
+    
  
     //fetching the proposal from the smart contract
     function getProposal(uint256 _id) public view returns(bytes32 _title, bytes32 _context, bytes32 _description){
@@ -64,5 +77,6 @@ contract voting {
         result := mload(add(source, 32))
     }
     }
-    
+
 }
+
