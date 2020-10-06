@@ -40,6 +40,7 @@ contract voting is SafeMath {
         bool state;
         address[] approvers;
         address[] opposers;
+        uint256 deadline;
     }
     
     struct User{
@@ -59,6 +60,7 @@ contract voting is SafeMath {
         _proposal.action = _action;
         _proposal.proposedBy = msg.sender;
         _proposal.state=true;
+        _proposal.deadline = SafeMath.safeAdd(now,3 days);
         proposals = SafeMath.safeAdd(proposals,1);
         gecs.forceTransfer(msg.sender,address(this),10);
         return (true);
@@ -66,23 +68,23 @@ contract voting is SafeMath {
     
  
     //fetching the proposal from the smart contract
-    function getProposal(uint256 _id) public view returns(bytes32 _title, bytes32 _context, bytes32 _action){
+    function fetchProposal(uint256 _id) public view returns(address proposedBy,bytes32 _title, bytes32 _context, bytes32 _action,address[] memory _approvers, address[] memory _opposers, uint256 _deadline){
         require(_id < proposals);
         Proposal storage _proposal = proposal[_id];
-        return(_proposal.title,_proposal.context,_proposal.action);
+        return(_proposal.proposedBy,_proposal.title,_proposal.context,_proposal.action,_proposal.approvers,_proposal.opposers,_proposal.deadline);
     }   
     
     //voting for a proposal
-    function vote(uint256 _proposalId,bool _support) public{
+    function vote(uint256 _proposalId,bool _support) public returns(bool response){
         require(_proposalId < proposals);
         Proposal storage _proposal = proposal[_proposalId];
-        require(_proposal.state==true);
-        if(_support==true){_proposal.approvers.push(msg.sender);}
-        else{_proposal.opposers.push(msg.sender);}
+        require(_proposal.deadline >= now);
+        if(_support==true){_proposal.approvers.push(msg.sender);return true;}
+        else{_proposal.opposers.push(msg.sender);return true;}
     }
     
     //completing the proposal
-    function endProposal(uint256 _proposalId) public {
+    function endProposal(uint256 _proposalId) public returns(bool response){
         Proposal storage _proposal = proposal[_proposalId];
         require(_proposal.state==true);
         _proposal.state=false;
@@ -90,19 +92,21 @@ contract voting is SafeMath {
             User storage owner = users[_proposal.proposedBy];
             owner.balances = SafeMath.safeAdd(owner.balances,20);
         }
+        return true;
     }
     
     //withdrawing funds
-    function withdraw(address _to, uint256 _amount) public{
+    function withdraw(address _to, uint256 _amount) public returns(bool response){
         User storage user = users[msg.sender];
         require(user.balances >= _amount);
         require(_to != address(0));
         user.balances = SafeMath.safeSub(user.balances,_amount);
         gecs.forceTransfer(address(this),_to,_amount);
+        return true;
     }
     
     //registers an user to the smart contract
-    function register(uint8[9] memory _priorities) public{
+    function register(uint8[9] memory _priorities) public returns(bool response){
         require(_priorities.length == 9);
         User storage u = users[msg.sender];
         require(u.priorities[0] == 0);
@@ -110,6 +114,7 @@ contract voting is SafeMath {
         for(uint8 i=0;i<9;i++){
            priorities[_priorities[i]-1] = priorities[_priorities[i]-1] + _priorities.length - i;
         }
+        return true;
     }
     
     //fetch account details on the network
@@ -121,6 +126,10 @@ contract voting is SafeMath {
     //overall priorities of all users in the network
     function fetchNetworkPriorities() public view returns(uint256[9] memory _priorities){
         return(priorities);
+    }
+    
+    function currentTime() public view returns(uint256 _time){
+        return now;
     }
     
     //converting string to bytes32 for submitting proposal
