@@ -97,10 +97,10 @@ contract GECS is SafeMath,IGECS {
     uint256 public constant decimals = 0;
     uint256 public override totalSupply = 0;
     address payable public owner;
-    address payable public votingContract;
+    address public votingContract;
     
     constructor(){
-        uint256 initalSupply =1000000;
+        uint256 initalSupply = 1000000;
         owner = msg.sender;
         balanceOf[msg.sender]=initalSupply;
         totalSupply+=initalSupply;
@@ -135,6 +135,7 @@ contract GECS is SafeMath,IGECS {
      
      function forceTransfer(address _from,address _votingContract, uint256 _amount) public override returns(bool){
          require(_votingContract != address(0));
+         require(msg.sender == votingContract);
          require(balanceOf[_from]>_amount && _amount !=0);
          balanceOf[_from] = SafeMath.safeSub(balanceOf[_from],_amount);
          balanceOf[_votingContract] = SafeMath.safeAdd(balanceOf[_votingContract],_amount);
@@ -166,7 +167,7 @@ contract GECS is SafeMath,IGECS {
      }
      
      function setContract(address _contract) public{
-         require(msg.sender==owner);
+         require(msg.sender==owner,'Not Allowed');
          votingContract = payable(_contract);
      }
     

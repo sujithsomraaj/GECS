@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity >=0.4.25 <0.7.3;
+pragma solidity >=0.4.25 <0.7.2;
 
 import "./GECS.sol";
 
@@ -11,9 +11,10 @@ contract voting is SafeMath {
     
     /* Priorities of users in the GECS Network */
     
-    uint256[9] priorities = [0,0,0,0,0,0,0,0,0];
+    uint256[9] public priorities = [0,0,0,0,0,0,0,0,0];
     
     /* 
+    
     priorities[0] = prosperity;
     priorities[1] = sustainability;
     priorities[2] = decentralization;
@@ -44,20 +45,19 @@ contract voting is SafeMath {
         address[] approvers;
         address[] opposers;
         bytes32[5] values;
+        uint256[4] option1; 
+        uint256[4] option2; 
+        uint256[4] option3; 
+        uint256[4] option4; 
+        uint256[4] option5; 
         uint256 deadline;
         uint256 totalWeight;
-        uint256[4] option1;
-        uint256[4] option2;
-        uint256[4] option3;
-        uint256[4] option4;
-        uint256[4] option5;
     }
     
     struct User{
         uint8[9] priorities;
-        uint256 balances;
+        uint256 balances; //6 decimal representation
         uint256[] voted;
-        uint256[] unclaimed;
         uint256[] claimed;
     }
     
@@ -70,19 +70,10 @@ contract voting is SafeMath {
         uint256[5] impact;
     }
     
-    struct Weights{
-       uint256[4] option1;
-       uint256[4] option2;
-       uint256[4] option3;
-       uint256[4] option4;
-       uint256[4] option5;
-    }
-    
-    mapping(uint256 => Proposal) proposal;
-    mapping(address => User) users;
-    mapping(address => mapping(uint256 => Vote)) votes;
-    mapping(uint256 => Weights) weight;
-    
+    mapping(uint256 => Proposal) public proposal;
+    mapping(address => User) public users;
+    mapping(address => mapping(uint256 => Vote)) public votes;
+
     //creating a proposal on the smart contract
     function createProposal(bytes32 _title,bytes32 _context, bytes32 _action, bytes32[5] memory _values) public returns (bool response) {
         require(gecs.balanceOf(msg.sender)>10,'A minimum of 10 GECS needed to submit proposal');
@@ -99,20 +90,6 @@ contract voting is SafeMath {
         return (true);
     }
     
- 
-    //fetching the proposal from the smart contract
-    function fetchProposal(uint256 _id) public view returns(address proposedBy,bytes32 _title, bytes32 _context, bytes32 _action,address[] memory _approvers, address[] memory _opposers, uint256 _deadline,uint256 _weightage, bool _approved, bool _ended, bytes32[5] memory _values){
-        require(_id < proposals,'Proposal not found');
-        Proposal storage _proposal = proposal[_id];
-        return(_proposal.proposedBy,_proposal.title,_proposal.context,_proposal.action,_proposal.approvers,_proposal.opposers,_proposal.deadline,_proposal.totalWeight,_proposal.approved,_proposal.ended,_proposal.values);
-    }   
-    
-    //fetching the user choices for priorities in the proposal
-    function fetchProposalReasons(uint256 _id) public view returns(uint256[4] memory _option1,uint256[4] memory _option2,uint256[4] memory _option3,uint256[4] memory _option4,uint256[4] memory _option5){
-        require(_id < proposals,'Proposal not found');
-        Proposal storage _proposal = proposal[_id];
-        return(_proposal.option1,_proposal.option2,_proposal.option3,_proposal.option4,_proposal.option5);
-    }
     
     //voting for a proposal
     function vote(uint256 _proposalId,bool _support, uint256[5] memory _impact) public returns(bool response){
@@ -123,14 +100,13 @@ contract voting is SafeMath {
         require(_vote.voted == false,'Already Voted');
         _vote.approved = _support;
         _vote.voted = true;
-        _proposal.option1[_impact[0]] = _proposal.option1[_impact[0]] + 1;
-        _proposal.option2[_impact[1]] = _proposal.option2[_impact[1]] + 1;
-        _proposal.option3[_impact[2]] = _proposal.option3[_impact[2]] + 1;
-        _proposal.option4[_impact[3]] = _proposal.option4[_impact[3]] + 1;
-        _proposal.option5[_impact[4]] = _proposal.option5[_impact[4]] + 1;
+        _proposal.option1[_impact[0]-1] = _proposal.option1[_impact[0]-1] + 1;
+        _proposal.option2[_impact[1]-1] = _proposal.option2[_impact[1]-1] + 1;
+        _proposal.option3[_impact[2]-1] = _proposal.option3[_impact[2]-1] + 1;
+        _proposal.option4[_impact[3]-1] = _proposal.option4[_impact[3]-1] + 1;
+        _proposal.option5[_impact[4]-1] = _proposal.option5[_impact[4]-1] + 1;
         User storage u = users[msg.sender];
         u.voted.push(_proposalId);
-        u.unclaimed.push(_proposalId);
         uint256 balance = gecs.balanceOf(msg.sender);
         _vote.balanceAtVote = balance;
         _vote.voteFrequency = u.voted.length;
@@ -142,24 +118,51 @@ contract voting is SafeMath {
         else{_proposal.opposers.push(msg.sender);return true;}
     }
     
-    //fetching a voted
-    function fetchVote(uint256 _proposalId) public view returns(bool _claimed,bool _voted,uint256 _balanceAtVote,uint256 _voteFrequency,uint256[5] memory _impact){
-        Vote memory _vote = votes[msg.sender][_proposalId];
-        return(_vote.claimed,_vote.voted,_vote.balanceAtVote,_vote.voteFrequency,_vote.impact);
-    }
     
     //completing the proposal
-    function endProposal(uint256 _proposalId) public returns(bool response){
-        require(msg.sender == owner,'Cannot end contract');
+    function endProposal(uint256 _proposalId,uint256 _totalWeight,uint256[4] memory _o1,uint256[4] memory _o2,uint256[4] memory _o3,uint256[4] memory _o4,uint256[4] memory _o5) public returns(bool response){
+        require(msg.sender == owner,'Not Owner');
         Proposal storage _proposal = proposal[_proposalId];
         require(_proposal.ended==false,'Already Ended');
         if(_proposal.approvers.length > _proposal.opposers.length){
-            _proposal.approved = true; _proposal.ended = true;
+            _proposal.approved = true;
         }
         else{
-            _proposal.approved = false; _proposal.ended = true;
+            _proposal.approved = false; 
         }
+        _proposal.option1 = _o1; _proposal.option2 = _o2; _proposal.option3 = _o3; _proposal.option4 = _o4; _proposal.option5 = _o5;
+        _proposal.totalWeight = _totalWeight;
+        _proposal.ended = true;
         return true;
+    }
+
+    //claim rewards
+    function claim(uint256 _proposalId,uint256 _userWeight) public returns(bool response){
+        Proposal storage _proposal = proposal[_proposalId];
+        require(_proposal.ended == true,'Not Ended');
+        require(msg.sender == owner);
+        Vote storage _vote = votes[msg.sender][_proposalId];
+        require(_vote.claimed == false,'Already Claimed');
+        User storage _user = users[msg.sender];
+        if(_vote.approved == _proposal.approved){
+          if(_proposal.approved==true){
+              uint256 allocation = (_userWeight/_proposal.totalWeight) * 100;
+              _user.balances = _user.balances + allocation;
+              _user.claimed.push(_proposalId);
+                _vote.claimed = true;
+          }
+          else{
+             uint256 allocation = (_userWeight/_proposal.totalWeight) * 90;
+             _user.balances = _user.balances + allocation;
+             _user.claimed.push(_proposalId);
+              _vote.claimed = true;  
+          }
+        }
+        else{
+            _user.claimed.push(_proposalId);
+            _vote.claimed = true;
+            return true;
+        }
     }
 
     //withdrawing funds
@@ -184,42 +187,10 @@ contract voting is SafeMath {
         return true;
     }
     
-    //fetch account details on the network
-    function fetchUser() public view returns(uint8[9] memory _priorities, uint256 _balance,uint256[] memory _voted,uint256[] memory _claimed, uint256[] memory _unclaimed){
-        User storage u = users[msg.sender];
-        return(u.priorities,u.balances,u.voted,u.claimed,u.unclaimed);
-    }
-    
-    //overall priorities of all users in the network
-    function fetchNetworkPriorities() public view returns(uint256 prosperity,uint256 sustainability,uint256 decentralization, uint256 adoption, uint256 liberty, uint256 innovation, uint256 inclusivity, uint256 community,uint256 evolution){
-        return(priorities[0],priorities[1],priorities[2],priorities[3],priorities[4],priorities[5],priorities[6],priorities[7],priorities[8]);
-    }
-    
-    function currentTime() public view returns(uint256 _time){
-        return block.timestamp;
-    }
-    
-    //converting string to bytes32 for submitting proposal
-    function stringToBytes32(string memory source) public pure returns (bytes32 result) {
-    bytes memory tempEmptyStringTest = bytes(source);
-    if (tempEmptyStringTest.length == 0) {
-        return 0x0;
-    }
-    assembly {
-        result := mload(add(source, 32))
-    }
-    }
-
-    function bytes32ToString(bytes32 _bytes32) public pure returns (string memory) {
-        uint8 i = 0;
-        while(i < 32 && _bytes32[i] != 0) {
-            i++;
-        }
-        bytes memory bytesArray = new bytes(i);
-        for (i = 0; i < 32 && _bytes32[i] != 0; i++) {
-            bytesArray[i] = _bytes32[i];
-        }
-        return string(bytesArray);
+    //fetch values
+    function fetchValues(uint256 _proposalId) view public returns(bytes32[5] memory _values,uint256[4] memory _o1,uint256[4] memory _o2,uint256[4] memory _o3,uint256[4] memory _o4,uint256[4] memory _o5){
+        Proposal storage _proposal = proposal[_proposalId];
+        return(_proposal.values,_proposal.option1,_proposal.option2,_proposal.option3,_proposal.option4,_proposal.option5);
     }
     
 }
