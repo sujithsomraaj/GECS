@@ -1,3 +1,7 @@
+/**
+ *Submitted for verification at Etherscan.io on 2020-10-11
+*/
+
 // SPDX-License-Identifier: UNLICENSED
 
 pragma solidity >=0.4.25 <0.7.2;
@@ -94,13 +98,13 @@ contract GECS is SafeMath,IGECS {
     
     string public constant name = "Governance Enhanced Commercial System";
     string public constant symbol = "GECS";
-    uint256 public constant decimals = 0;
+    uint256 public constant decimals = 18;
     uint256 public override totalSupply = 0;
     address payable public owner;
     address public votingContract;
     
     constructor(){
-        uint256 initalSupply = 1000000;
+        uint256 initalSupply = SafeMath.safeMul(1000000,10**18);
         owner = msg.sender;
         balanceOf[msg.sender]=initalSupply;
         totalSupply+=initalSupply;

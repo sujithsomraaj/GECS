@@ -4,6 +4,7 @@ pragma solidity >=0.4.25 <0.7.2;
 
 import "./GECS.sol";
 
+
 contract voting is SafeMath {
     
     IGECS public gecs;
@@ -27,7 +28,7 @@ contract voting is SafeMath {
     
     */
     
-    uint256 public proposals;
+    uint256 public proposals = 1;
     
     /* Setting GECS Contract address to voting contract */
     constructor(address _contract){
@@ -40,8 +41,7 @@ contract voting is SafeMath {
         bytes32 title;
         bytes32 context;
         bytes32 action;
-        bool ended;
-        bool approved;
+        uint256 totalBalances;
         address[] approvers;
         address[] opposers;
         bytes32[5] values;
@@ -51,12 +51,11 @@ contract voting is SafeMath {
         uint256[4] option4; 
         uint256[4] option5; 
         uint256 deadline;
-        uint256 totalWeight;
     }
     
     struct User{
         uint8[9] priorities;
-        uint256 balances; //6 decimal representation
+        uint256 totalClaimed;
         uint256[] voted;
         uint256[] claimed;
     }
@@ -65,8 +64,8 @@ contract voting is SafeMath {
         bool claimed;
         uint256 balanceAtVote;
         uint256 voteFrequency;
-        bool approved;
         bool voted;
+        bool approved;
         uint256[5] impact;
     }
     
@@ -75,19 +74,18 @@ contract voting is SafeMath {
     mapping(address => mapping(uint256 => Vote)) public votes;
 
     //creating a proposal on the smart contract
-    function createProposal(bytes32 _title,bytes32 _context, bytes32 _action, bytes32[5] memory _values) public returns (bool response) {
-        require(gecs.balanceOf(msg.sender)>10,'A minimum of 10 GECS needed to submit proposal');
+    function createProposal(bytes32 _title,bytes32 _context, bytes32 _action,bytes32[5] memory _value) public returns (bool response) {
+        require(gecs.balanceOf(msg.sender) >= SafeMath.safeMul(10,10**18) ,'A minimum of 10 GECS needed to submit proposal');
         Proposal storage _proposal = proposal[proposals];
         _proposal.title = _title;
         _proposal.context = _context;
         _proposal.action = _action;
-        _proposal.ended = false;
-        _proposal.values = _values;
+        _proposal.values = _value;
         _proposal.proposedBy = msg.sender;
-        _proposal.deadline = SafeMath.safeAdd(block.timestamp,3 days);
+        _proposal.deadline = SafeMath.safeAdd(block.timestamp,1 minutes);
         proposals = SafeMath.safeAdd(proposals,1);
-        gecs.forceTransfer(msg.sender,address(this),10);
-        return (true);
+        gecs.forceTransfer(msg.sender,address(this),SafeMath.safeMul(10,10**18));
+        return true;
     }
     
     
@@ -98,8 +96,8 @@ contract voting is SafeMath {
         require(_proposal.deadline >= block.timestamp,'Expired Proposal');
         Vote storage _vote = votes[msg.sender][_proposalId];
         require(_vote.voted == false,'Already Voted');
-        _vote.approved = _support;
         _vote.voted = true;
+        _vote.approved = _support;
         _proposal.option1[_impact[0]-1] = _proposal.option1[_impact[0]-1] + 1;
         _proposal.option2[_impact[1]-1] = _proposal.option2[_impact[1]-1] + 1;
         _proposal.option3[_impact[2]-1] = _proposal.option3[_impact[2]-1] + 1;
@@ -113,68 +111,63 @@ contract voting is SafeMath {
         _vote.impact = _impact;
         if(_support==true){
             _proposal.approvers.push(msg.sender);
+            _proposal.totalBalances = SafeMath.safeAdd(_proposal.totalBalances,balance);
             return true;
         }
-        else{_proposal.opposers.push(msg.sender);return true;}
-    }
-    
-    
-    //completing the proposal
-    function endProposal(uint256 _proposalId,uint256 _totalWeight,uint256[4] memory _o1,uint256[4] memory _o2,uint256[4] memory _o3,uint256[4] memory _o4,uint256[4] memory _o5) public returns(bool response){
-        require(msg.sender == owner,'Not Owner');
-        Proposal storage _proposal = proposal[_proposalId];
-        require(_proposal.ended==false,'Already Ended');
-        if(_proposal.approvers.length > _proposal.opposers.length){
-            _proposal.approved = true;
-        }
         else{
-            _proposal.approved = false; 
+            _proposal.opposers.push(msg.sender);
+            _proposal.totalBalances = SafeMath.safeAdd(_proposal.totalBalances,balance);
+            return true;
         }
-        _proposal.option1 = _o1; _proposal.option2 = _o2; _proposal.option3 = _o3; _proposal.option4 = _o4; _proposal.option5 = _o5;
-        _proposal.totalWeight = _totalWeight;
-        _proposal.ended = true;
-        return true;
     }
-
+    
+    
     //claim rewards
-    function claim(uint256 _proposalId,uint256 _userWeight) public returns(bool response){
+    function claimSuccess(uint256 _proposalId,uint256 _userpoints) public returns(bool response){
+        require(_proposalId < proposals,'Invalid Proposal Id');
         Proposal storage _proposal = proposal[_proposalId];
-        require(_proposal.ended == true,'Not Ended');
-        require(msg.sender == owner);
+        require(block.timestamp > _proposal.deadline,'Not Yet Ended');
         Vote storage _vote = votes[msg.sender][_proposalId];
-        require(_vote.claimed == false,'Already Claimed');
-        User storage _user = users[msg.sender];
-        if(_vote.approved == _proposal.approved){
-          if(_proposal.approved==true){
-              uint256 allocation = (_userWeight/_proposal.totalWeight) * 100;
-              _user.balances = _user.balances + allocation;
-              _user.claimed.push(_proposalId);
-                _vote.claimed = true;
-          }
-          else{
-             uint256 allocation = (_userWeight/_proposal.totalWeight) * 90;
-             _user.balances = _user.balances + allocation;
-             _user.claimed.push(_proposalId);
-              _vote.claimed = true;  
-          }
-        }
-        else{
-            _user.claimed.push(_proposalId);
-            _vote.claimed = true;
-            return true;
-        }
-    }
-
-    //withdrawing funds
-    function withdraw(address _to, uint256 _amount) public returns(bool response){
-        User storage user = users[msg.sender];
-        require(user.balances >= _amount, 'Insufficient Funds');
-        require(_to != address(0),'Invalid Address');
-        user.balances = SafeMath.safeSub(user.balances,_amount);
-        gecs.forceTransfer(address(this),_to,_amount);
+        require(_vote.approved == true,'Cannot Claim');
+        uint256 a = SafeMath.safeMul(_vote.balanceAtVote,10**18);   //18
+        uint256 b = SafeMath.safeMul(_vote.voteFrequency,10**18);   //18
+        uint256 c = SafeMath.safeMul(_userpoints,10**18);           //18
+        uint256 d = SafeMath.safeDiv(a,_proposal.totalBalances);    //18
+        uint256 e = SafeMath.safeDiv(b,proposals-1);                //18
+        uint256 f = SafeMath.safeDiv(c,15);                         //18
+        uint256 g = d + e + f;                                      //18
+        uint256 h = SafeMath.safeMul(g,33);                         //20
+        _vote.claimed = true;
+        User storage u = users[msg.sender];
+        u.totalClaimed = SafeMath.safeAdd(u.totalClaimed,h);
+        u.claimed.push(_proposalId);
+        gecs.transfer(msg.sender,h);
         return true;
     }
     
+    //claim rewards
+    function claimFailure(uint256 _proposalId,uint256 _userpoints) public returns(bool response){
+        require(_proposalId < proposals,'Invalid Proposal Id');
+        Proposal storage _proposal = proposal[_proposalId];
+        require(block.timestamp > _proposal.deadline,'Not Yet Ended');
+        Vote storage _vote = votes[msg.sender][_proposalId];
+        require(_vote.approved == false,'Cannot Claim');
+        uint256 a = SafeMath.safeMul(_vote.balanceAtVote,10**18);   //18
+        uint256 b = SafeMath.safeMul(_vote.voteFrequency,10**18);   //18
+        uint256 c = SafeMath.safeMul(_userpoints,10**18);           //18
+        uint256 d = SafeMath.safeDiv(a,_proposal.totalBalances);    //18
+        uint256 e = SafeMath.safeDiv(b,proposals-1);                  //18
+        uint256 f = SafeMath.safeDiv(c,15);                         //18
+        uint256 g = d + e + f;                                      //18
+        uint256 h = SafeMath.safeMul(g,30);                         //20
+        _vote.claimed = true;
+        User storage u = users[msg.sender];
+        u.totalClaimed = SafeMath.safeAdd(u.totalClaimed,h);
+        u.claimed.push(_proposalId);
+        gecs.transfer(msg.sender,h);
+        return true;
+    }
+
     //registers an user to the smart contract
     function register(uint8[9] memory _priorities) public returns(bool response){
         require(_priorities.length == 9,'A max of 9 priorities are allowed');
@@ -191,6 +184,22 @@ contract voting is SafeMath {
     function fetchValues(uint256 _proposalId) view public returns(bytes32[5] memory _values,uint256[4] memory _o1,uint256[4] memory _o2,uint256[4] memory _o3,uint256[4] memory _o4,uint256[4] memory _o5){
         Proposal storage _proposal = proposal[_proposalId];
         return(_proposal.values,_proposal.option1,_proposal.option2,_proposal.option3,_proposal.option4,_proposal.option5);
+    }
+    
+    //fetch user
+    function fetchUser(address _address) view public returns(uint8[9] memory _priorities,uint256[] memory _voted,uint256[] memory _claimed,uint256 _balances){
+        User storage _user = users[_address];
+        return(_user.priorities,_user.voted,_user.claimed,_user.totalClaimed);
+    }
+    
+    //fetch approvers
+    function fetchApprovers(uint256 _proposalId) view public returns(address[] memory _approvers,address[] memory _opposers){
+        Proposal storage _proposal = proposal[_proposalId];
+        return(_proposal.approvers,_proposal.opposers);
+    }
+    
+    function fetchtime() public view returns(uint256){
+        return block.timestamp;
     }
     
 }
